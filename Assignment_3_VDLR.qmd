@@ -1,0 +1,454 @@
+
+---
+title: "Assignment 3"
+format: html
+
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+
+```{r}
+# Install packages only if they are missing
+# The repos option helps avoid the CRAN mirror error in RStudio/Quarto.
+
+packages <- c("ISLR2", "MASS", "class", "e1071", "ggplot2", "dplyr")
+
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg, repos = "https://cloud.r-project.org")
+    library(pkg, character.only = TRUE)
+  }
+}
+```
+
+# Exercise 13
+
+## 13(a) 
+
+```{r}
+library(ISLR2)
+data(Weekly)
+
+summary(Weekly)
+str(Weekly)
+head(Weekly)
+```
+
+```{r}
+table(Weekly$Direction)
+```
+
+```{r}
+cor(Weekly[, -9])
+```
+
+```{r}
+
+plot(Weekly$Year, Weekly$Today,
+     xlab = "Year",
+     ylab = "Weekly Return Today",
+     main = "Weekly Returns by Year")
+```
+
+```{r}
+
+boxplot(Volume ~ Direction, data = Weekly,
+        main = "Volume by Market Direction",
+        xlab = "Direction",
+        ylab = "Volume")
+```
+
+**Answer:**  
+The data has 1,089 weekly observations from 1990 to 2010. There are slightly more weeks where the market went `Up` than `Down`. The correlations between the lag variables and `Today` are not very strong. One pattern that appears is that `Volume` increases over time. 
+
+## 13(b) 
+
+```{r}
+
+weekly_glm <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume,
+                  data = Weekly,
+                  family = binomial)
+
+summary(weekly_glm)
+```
+
+**Answer:**  
+Looking at the p-values, `Lag2` appears to be statistically significant because its p-value is below 0.05. 
+
+## 13(c) 
+
+```{r}
+
+weekly_probs <- predict(weekly_glm, type = "response")
+
+
+weekly_pred <- rep("Down", nrow(Weekly))
+weekly_pred[weekly_probs > 0.5] <- "Up"
+
+
+table(Predicted = weekly_pred, Actual = Weekly$Direction)
+
+# Overall accuracy
+mean(weekly_pred == Weekly$Direction)
+```
+
+**Answer:**  
+The confusion matrix compares the predicted direction to the actual direction. Logistic regression predicts many weeks as `Up`. It does better at identifying `Up` weeks than `Down` weeks. 
+
+## 13(d) 
+
+```{r}
+
+train <- Weekly$Year <= 2008
+weekly_train <- Weekly[train, ]
+weekly_test <- Weekly[!train, ]
+
+
+weekly_glm2 <- glm(Direction ~ Lag2,
+                   data = weekly_train,
+                   family = binomial)
+
+
+weekly_probs2 <- predict(weekly_glm2, weekly_test, type = "response")
+weekly_pred2 <- rep("Down", nrow(weekly_test))
+weekly_pred2[weekly_probs2 > 0.5] <- "Up"
+
+table(Predicted = weekly_pred2, Actual = weekly_test$Direction)
+mean(weekly_pred2 == weekly_test$Direction)
+```
+
+**Answer:**  
+This model uses only `Lag2` and tests on the years 2009 and 2010. 
+
+## 13(e) 
+
+```{r}
+weekly_lda <- lda(Direction ~ Lag2, data = weekly_train)
+weekly_lda_pred <- predict(weekly_lda, weekly_test)
+
+table(Predicted = weekly_lda_pred$class, Actual = weekly_test$Direction)
+mean(weekly_lda_pred$class == weekly_test$Direction)
+```
+
+## 13(f) 
+
+```{r}
+weekly_qda <- qda(Direction ~ Lag2, data = weekly_train)
+weekly_qda_pred <- predict(weekly_qda, weekly_test)
+
+table(Predicted = weekly_qda_pred$class, Actual = weekly_test$Direction)
+mean(weekly_qda_pred$class == weekly_test$Direction)
+```
+
+## 13(g) 
+
+```{r}
+set.seed(1)
+
+train_X <- as.matrix(weekly_train$Lag2)
+test_X <- as.matrix(weekly_test$Lag2)
+train_direction <- weekly_train$Direction
+
+knn_pred <- knn(train_X, test_X, train_direction, k = 1)
+
+table(Predicted = knn_pred, Actual = weekly_test$Direction)
+mean(knn_pred == weekly_test$Direction)
+```
+
+## 13(h)
+
+```{r}
+weekly_nb <- naiveBayes(Direction ~ Lag2, data = weekly_train)
+weekly_nb_pred <- predict(weekly_nb, weekly_test)
+
+table(Predicted = weekly_nb_pred, Actual = weekly_test$Direction)
+mean(weekly_nb_pred == weekly_test$Direction)
+```
+
+## 13(i) 
+
+**Answer:**  
+Based on the test accuracy, logistic regression and LDA usually perform the best for this data when using `Lag2`. QDA and KNN with K = 1 do not perform as well. KNN with K = 1 may overfit because it depends too much on the closest observation.
+
+## 13(j) 
+
+```{r}
+# Try logistic regression with Lag1, Lag2, and Volume
+weekly_glm_try <- glm(Direction ~ Lag1 + Lag2 + Volume,
+                      data = weekly_train,
+                      family = binomial)
+
+weekly_probs_try <- predict(weekly_glm_try, weekly_test, type = "response")
+weekly_pred_try <- rep("Down", nrow(weekly_test))
+weekly_pred_try[weekly_probs_try > 0.5] <- "Up"
+
+table(Predicted = weekly_pred_try, Actual = weekly_test$Direction)
+mean(weekly_pred_try == weekly_test$Direction)
+```
+
+```{r}
+
+train_X2 <- as.matrix(weekly_train[, c("Lag1", "Lag2")])
+test_X2 <- as.matrix(weekly_test[, c("Lag1", "Lag2")])
+
+for (k_value in c(1, 3, 5, 10, 15, 20)) {
+  pred <- knn(train_X2, test_X2, train_direction, k = k_value)
+  cat("K =", k_value, "Accuracy =", mean(pred == weekly_test$Direction), "\n")
+}
+```
+
+**Answer:**  
+After trying different combinations, the model using `Lag2` alone still appears to be one of the best and simplest choices. 
+
+# Exercise 14: 
+
+## 14(a) 
+
+```{r}
+data(Auto)
+
+# Create a binary variable: 1 if mpg is above the median, 0 otherwise
+mpg01 <- ifelse(Auto$mpg > median(Auto$mpg), 1, 0)
+Auto$mpg01 <- mpg01
+
+
+table(Auto$mpg01)
+```
+
+## 14(b) Explore graphically
+
+```{r}
+
+boxplot(cylinders ~ mpg01, data = Auto,
+        main = "Cylinders by mpg01",
+        xlab = "mpg01",
+        ylab = "Cylinders")
+
+boxplot(displacement ~ mpg01, data = Auto,
+        main = "Displacement by mpg01",
+        xlab = "mpg01",
+        ylab = "Displacement")
+
+boxplot(horsepower ~ mpg01, data = Auto,
+        main = "Horsepower by mpg01",
+        xlab = "mpg01",
+        ylab = "Horsepower")
+
+boxplot(weight ~ mpg01, data = Auto,
+        main = "Weight by mpg01",
+        xlab = "mpg01",
+        ylab = "Weight")
+```
+
+```{r}
+
+plot(Auto$weight, Auto$horsepower,
+     col = Auto$mpg01 + 1,
+     xlab = "Weight",
+     ylab = "Horsepower",
+     main = "Weight and Horsepower by mpg01")
+legend("topright", legend = c("Low MPG", "High MPG"), col = c(1, 2), pch = 1)
+```
+
+**Answer:**  
+The variables that seem most related to `mpg01` are `cylinders`, `displacement`, `horsepower`, and `weight`. 
+
+## 14(c) 
+
+```{r}
+set.seed(1)
+
+
+train_auto <- sample(1:nrow(Auto), nrow(Auto) / 2)
+Auto_train <- Auto[train_auto, ]
+Auto_test <- Auto[-train_auto, ]
+```
+
+## 14(d) 
+
+```{r}
+auto_lda <- lda(mpg01 ~ cylinders + displacement + horsepower + weight,
+                data = Auto_train)
+
+auto_lda_pred <- predict(auto_lda, Auto_test)
+
+mean(auto_lda_pred$class != Auto_test$mpg01)
+```
+
+**Answer:**  
+The number printed above is the test error rate for LDA.
+
+## 14(e) 
+
+```{r}
+auto_qda <- qda(mpg01 ~ cylinders + displacement + horsepower + weight,
+                data = Auto_train)
+
+auto_qda_pred <- predict(auto_qda, Auto_test)
+
+mean(auto_qda_pred$class != Auto_test$mpg01)
+```
+
+## 14(f) 
+
+```{r}
+auto_glm <- glm(mpg01 ~ cylinders + displacement + horsepower + weight,
+                data = Auto_train,
+                family = binomial)
+
+auto_glm_probs <- predict(auto_glm, Auto_test, type = "response")
+auto_glm_pred <- ifelse(auto_glm_probs > 0.5, 1, 0)
+
+mean(auto_glm_pred != Auto_test$mpg01)
+```
+
+## 14(g) 
+
+```{r}
+auto_nb <- naiveBayes(as.factor(mpg01) ~ cylinders + displacement + horsepower + weight,
+                      data = Auto_train)
+
+auto_nb_pred <- predict(auto_nb, Auto_test)
+
+mean(auto_nb_pred != Auto_test$mpg01)
+```
+
+## 14(h) 
+
+```{r}
+# Use the same predictors for KNN
+train_X_auto <- scale(Auto_train[, c("cylinders", "displacement", "horsepower", "weight")])
+test_X_auto <- scale(Auto_test[, c("cylinders", "displacement", "horsepower", "weight")])
+train_mpg01 <- Auto_train$mpg01
+
+for (k_value in c(1, 3, 5, 10, 15, 20)) {
+  pred <- knn(train_X_auto, test_X_auto, train_mpg01, k = k_value)
+  error <- mean(pred != Auto_test$mpg01)
+  cat("K =", k_value, "Test Error =", error, "\n")
+}
+```
+
+**Answer:**  
+The best value of K is the one with the lowest test error. 
+
+# Exercise 16: 
+
+## Create response variable
+
+```{r}
+data(Boston)
+
+
+crim01 <- ifelse(Boston$crim > median(Boston$crim), 1, 0)
+Boston$crim01 <- crim01
+
+table(Boston$crim01)
+```
+
+## Explore the data
+
+```{r}
+
+boxplot(zn ~ crim01, data = Boston,
+        main = "ZN by Crime Level",
+        xlab = "crim01",
+        ylab = "ZN")
+
+boxplot(indus ~ crim01, data = Boston,
+        main = "INDUS by Crime Level",
+        xlab = "crim01",
+        ylab = "INDUS")
+
+boxplot(nox ~ crim01, data = Boston,
+        main = "NOX by Crime Level",
+        xlab = "crim01",
+        ylab = "NOX")
+
+boxplot(dis ~ crim01, data = Boston,
+        main = "DIS by Crime Level",
+        xlab = "crim01",
+        ylab = "DIS")
+
+boxplot(rad ~ crim01, data = Boston,
+        main = "RAD by Crime Level",
+        xlab = "crim01",
+        ylab = "RAD")
+
+boxplot(tax ~ crim01, data = Boston,
+        main = "TAX by Crime Level",
+        xlab = "crim01",
+        ylab = "TAX")
+```
+
+**Answer:**  
+The variables that seem useful for predicting whether crime is above or below the median are `zn`, `indus`, `nox`, `dis`, `rad`, and `tax`. Areas with higher crime tend to have higher industrial activity, higher nitrogen oxide concentration, higher tax rates, and different highway accessibility.
+
+## Split the data
+
+```{r}
+set.seed(1)
+
+train_boston <- sample(1:nrow(Boston), nrow(Boston) / 2)
+Boston_train <- Boston[train_boston, ]
+Boston_test <- Boston[-train_boston, ]
+```
+
+## Logistic regression
+
+```{r}
+boston_glm <- glm(crim01 ~ zn + indus + nox + dis + rad + tax,
+                  data = Boston_train,
+                  family = binomial)
+
+boston_glm_probs <- predict(boston_glm, Boston_test, type = "response")
+boston_glm_pred <- ifelse(boston_glm_probs > 0.5, 1, 0)
+
+table(Predicted = boston_glm_pred, Actual = Boston_test$crim01)
+mean(boston_glm_pred != Boston_test$crim01)
+```
+
+## LDA
+
+```{r}
+boston_lda <- lda(crim01 ~ zn + indus + nox + dis + rad + tax,
+                  data = Boston_train)
+
+boston_lda_pred <- predict(boston_lda, Boston_test)
+
+table(Predicted = boston_lda_pred$class, Actual = Boston_test$crim01)
+mean(boston_lda_pred$class != Boston_test$crim01)
+```
+
+## Naive Bayes
+
+```{r}
+boston_nb <- naiveBayes(as.factor(crim01) ~ zn + indus + nox + dis + rad + tax,
+                        data = Boston_train)
+
+boston_nb_pred <- predict(boston_nb, Boston_test)
+
+table(Predicted = boston_nb_pred, Actual = Boston_test$crim01)
+mean(boston_nb_pred != Boston_test$crim01)
+```
+
+## KNN
+
+```{r}
+train_X_boston <- scale(Boston_train[, c("zn", "indus", "nox", "dis", "rad", "tax")])
+test_X_boston <- scale(Boston_test[, c("zn", "indus", "nox", "dis", "rad", "tax")])
+train_crim01 <- Boston_train$crim01
+
+for (k_value in c(1, 3, 5, 10, 15, 20)) {
+  pred <- knn(train_X_boston, test_X_boston, train_crim01, k = k_value)
+  error <- mean(pred != Boston_test$crim01)
+  cat("K =", k_value, "Test Error =", error, "\n")
+}
+```
+
+**Final answer for Exercise 16:**  
+The models can predict whether a suburb has an above-median crime rate using variables such as `zn`, `indus`, `nox`, `dis`, `rad`, and `tax`. Based on the test errors, the best model is the one with the lowest test error.Logistic regression and LDA are easier to interpret, while KNN may perform well after scaling the variables.
+
+
